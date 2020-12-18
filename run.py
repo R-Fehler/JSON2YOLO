@@ -1,5 +1,5 @@
 import json
-
+import os
 import cv2
 import pandas as pd
 from PIL import Image
@@ -311,25 +311,26 @@ def convert_coco_json(json_dir='../coco/annotations/'):
             data = json.load(f)
 
         # Create image dict
-        images = {'%g' % x['id']: x for x in data['images']}
+        images = {'%g' % x[0]['id']: x for x in data['images']} # json.load stores it in single list item with index 0
 
         # Write labels file
-        for x in tqdm(data['annotations'], desc='Annotations %s' % json_file):
-            if x['iscrowd']:
-                continue
+        for annotations_of_image in tqdm(data['annotations'], desc='Annotations %s' % json_file):
+            for annotation in annotations_of_image:
+                if annotation['iscrowd']:
+                    continue
+                
+                img = images['%g' % annotation['image_id']][0] # json.load stores it in single list item with index 0
+                h, w, f = img['height'], img['width'], img['file_name']
 
-            img = images['%g' % x['image_id']]
-            h, w, f = img['height'], img['width'], img['file_name']
+                # The Labelbox bounding box format is [top left x, top left y, width, height]
+                box = np.array(annotation['bbox'], dtype=np.float64)
+                box[:2] += box[2:] / 2  # xy top-left corner to center
+                box[[0, 2]] /= w  # normalize x
+                box[[1, 3]] /= h  # normalize y
 
-            # The Labelbox bounding box format is [top left x, top left y, width, height]
-            box = np.array(x['bbox'], dtype=np.float64)
-            box[:2] += box[2:] / 2  # xy top-left corner to center
-            box[[0, 2]] /= w  # normalize x
-            box[[1, 3]] /= h  # normalize y
-
-            if (box[2] > 0.) and (box[3] > 0.):  # if w > 0 and h > 0
-                with open(fn + Path(f).stem + '.txt', 'a') as file:
-                    file.write('%g %.6f %.6f %.6f %.6f\n' % (coco80[x['category_id'] - 1], *box))
+                if (box[2] > 0.) and (box[3] > 0.):  # if w > 0 and h > 0
+                    with open(fn + Path(f).stem + '.txt', 'a') as file:
+                        file.write('%g %.6f %.6f %.6f %.6f\n' % (annotation['category_id'] - 1, *box))
 
 
 if __name__ == '__main__':
@@ -355,5 +356,5 @@ if __name__ == '__main__':
     elif source is 'coco':
         convert_coco_json()
 
-    # zip results
-    # os.system('zip -r ../coco.zip ../coco')
+    # %% zip results
+    #  os.system('zip -r ../coco.zip ../coco')
